@@ -37,7 +37,7 @@ exports.uploadReceipt = [
         if (req.file.mimetype === 'application/pdf') {
           console.log('uploadReceipt: Processing PDF:', req.file.filename);
           const dataBuffer = fs.readFileSync(filePath);
-          const data = await pdfParse(dataBuffer, { max: 1 }); // Limit to first page for simplicity
+          const data = await pdfParse(dataBuffer, { max: 1 });
           text = data.text;
         } else {
           console.log('uploadReceipt: Processing image with Tesseract:', req.file.filename);
@@ -52,16 +52,25 @@ exports.uploadReceipt = [
         fs.unlinkSync(filePath);
         return res.status(500).json({ message: 'Failed to process file. Please ensure the file is clear and contains readable text.' });
       }
-      const transaction = parseReceiptText(text);
-      transaction.userId = req.user.userId;
-      console.log('uploadReceipt: Parsed transaction:', transaction);
-      if (transaction.amount <= 0 && transaction.type === 'expense') {
+      const transactions = parseReceiptText(text, req.user.userId);
+      if (transactions.length === 0) {
         fs.unlinkSync(filePath);
-        return res.status(400).json({ message: 'Invalid transaction amount for expense' });
+        return res.status(400).json({ message: 'No valid transactions found in the receipt' });
       }
-      const savedTransaction = await new Transaction(transaction).save();
+      const savedTransactions = [];
+      for (const transaction of transactions) {
+        if (transaction.amount <= 0 && transaction.type === 'expense') {
+          console.log('uploadReceipt: Skipping invalid expense transaction:', transaction);
+          continue;
+        }
+        const savedTransaction = await new Transaction(transaction).save();
+        savedTransactions.push(savedTransaction);
+      }
       fs.unlinkSync(filePath);
-      res.json(savedTransaction);
+      if (savedTransactions.length === 0) {
+        return res.status(400).json({ message: 'No valid transactions saved' });
+      }
+      res.json(savedTransactions[0]); // Return first transaction for single receipt
     } catch (err) {
       console.error('uploadReceipt: Error:', err.message);
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
@@ -70,69 +79,96 @@ exports.uploadReceipt = [
   }
 ];
 
-function parseReceiptText(text) {
-  // Normalize text to lowercase for case-insensitive matching
-  const normalizedText = text.toLowerCase();
-
-  // Determine transaction type and category
-  let type = 'expense';
-  let category = 'Uncategorized';
-  if (normalizedText.includes('refund') ||
-      normalizedText.includes('credit') ||
-      normalizedText.includes('payment received') ||
-      normalizedText.includes('deposit') ||
-      normalizedText.match(/-\$\d+\.\d{2}/)) {
-    type = 'income';
-    category = 'Income';
-  } else {
-    // Assign expense sub-categories based on keywords
-    if (normalizedText.includes('grocery') || normalizedText.includes('supermarket') || normalizedText.includes('market')) {
-      category = 'Grocery';
-    } else if (normalizedText.includes('restaurant') || normalizedText.includes('diner') || normalizedText.includes('cafe')) {
-      category = 'Dining';
-    } else if (normalizedText.includes('fuel') || normalizedText.includes('gas') || normalizedText.includes('petrol')) {
-      category = 'Fuel';
-    } else if (normalizedText.includes('utility') || normalizedText.includes('bill') || normalizedText.includes('electricity')) {
-      category = 'Utilities';
+exports.uploadPdfHistory = [
+  upload.single('file'),
+  async (req, res, next) => {
+    try {
+      if (!req.file) {
+        console.log('uploadPdfHistory: No file uploaded');
+        return res.status(400).json({ message: 'No file uploaded' });
+      }
+      const filePath = path.join(__dirname, '../uploads', req.file.filename);
+      let text;
+      try {
+        console.log('uploadPdfHistory: Processing PDF:', req.file.filename);
+        const dataBuffer = fs.readFileSync(filePath);
+        const data = await pdfParse(dataBuffer); // Process all pages
+        text = data.text;
+        console.log('uploadPdfHistory: Extracted text:', text);
+      } catch (err) {
+        console.error('uploadPdfHistory: Text extraction failed:', err.message);
+        fs.unlinkSync(filePath);
+        return res.status(500).json({ message: 'Failed to process PDF. Please ensure the file contains readable text.' });
+      }
+      const transactions = parseReceiptText(text, req.user.userId);
+      if (transactions.length === 0) {
+        fs.unlinkSync(filePath);
+        return res.status(400).json({ message: 'No valid transactions found in the PDF' });
+      }
+      const savedTransactions = [];
+      for (const transaction of transactions) {
+        if (transaction.amount <= 0 && transaction.type === 'expense') {
+          console.log('uploadPdfHistory: Skipping invalid expense transaction:', transaction);
+          continue;
+        }
+        const savedTransaction = await new Transaction(transaction).save();
+        savedTransactions.push(savedTransaction);
+      }
+      fs.unlinkSync(filePath);
+      if (savedTransactions.length === 0) {
+        return res.status(400).json({ message: 'No valid transactions saved' });
+      }
+      res.json(savedTransactions); // Return all transactions for history
+    } catch (err) {
+      console.error('uploadPdfHistory: Error:', err.message);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      next(err);
     }
   }
+];
 
-  // Extract amount (e.g., $12.34, -$12.34, Total: 12.34, 12.34 USD)
-  const amountMatch = text.match(/(?:Total|Subtotal|Amount|Paid|Refund|Credit)[:\s]*[+-]?\s*\$?\s*(\d+\.\d{2})(?:\s*USD)?/i) ||
-                      text.match(/[+-]?\s*\$?\s*(\d+\.\d{2})/i);
-  const amount = amountMatch ? Math.abs(parseFloat(amountMatch[1])) : 0; // Use absolute value for consistency
+function parseReceiptText(text, userId) {
+  const normalizedText = text.toLowerCase();
+  const transactions = [];
+  let defaultDescription = 'Unknown Place';
+  let defaultCategory = 'Uncategorized';
 
-  // Extract date (e.g., MM/DD/YYYY, MM-DD-YYYY, DD MMM YYYY)
-  const dateMatch = text.match(/\d{2}[\/-]\d{2}[\/-]\d{4}/) || // MM/DD/YYYY or MM-DD-YYYY
-                    text.match(/\d{2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}/i); // DD MMM YYYY
-  let date;
-  if (dateMatch) {
-    date = dateMatch[0].includes('/') || dateMatch[0].includes('-') ?
-      new Date(dateMatch[0].replace(/-/g, '/')) :
-      new Date(dateMatch[0]);
-    if (isNaN(date)) date = new Date(); // Fallback to current date if invalid
-  } else {
-    date = new Date(); // Fallback to current date
-  }
-
-  // Extract place/company name (e.g., Merchant: Walmart, or first line)
+  // Extract default place/company name
   const placeMatch = text.match(/(?:Merchant|Store|Vendor|Company)[:\s]*(.*)/i) ||
                      text.match(/(.*?)\n/);
-  const description = placeMatch ? placeMatch[1].trim() : 'Unknown Place';
+  if (placeMatch) {
+    defaultDescription = placeMatch[1].trim();
+  }
 
-  // Handle tabular data in PDFs (basic row parsing)
-  const transactions = [];
+  // Determine default category for expenses
+  if (normalizedText.includes('grocery') || normalizedText.includes('supermarket') || normalizedText.includes('market')) {
+    defaultCategory = 'Grocery';
+  } else if (normalizedText.includes('restaurant') || normalizedText.includes('diner') || normalizedText.includes('cafe')) {
+    defaultCategory = 'Dining';
+  } else if (normalizedText.includes('fuel') || normalizedText.includes('gas') || normalizedText.includes('petrol')) {
+    defaultCategory = 'Fuel';
+  } else if (normalizedText.includes('utility') || normalizedText.includes('bill') || normalizedText.includes('electricity')) {
+    defaultCategory = 'Utilities';
+  }
+
+  // Handle tabular data (e.g., transaction history)
   const lines = text.split('\n').filter(line => line.trim());
   let isTable = false;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    // Detect table-like structure (e.g., lines with amount and date)
     const rowAmount = line.match(/[+-]?\s*\$?\s*(\d+\.\d{2})(?:\s*USD)?/i);
-    const rowDate = line.match(/\d{2}[\/-]\d{2}[\/-]\d{4}/) || line.match(/\d{2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}/i);
+    const rowDate = line.match(/\d{2}[\/-]\d{2}[\/-]\d{4}/) || 
+                    line.match(/\d{2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}/i);
+    const rowDescription = line.match(/(?:[A-Za-z\s]+)(?=\s+\d{2}[\/-])/i) || // Description before date
+                          line.match(/(?:[A-Za-z\s]+)(?=\s+[+-]?\s*\$?\s*\d+\.\d{2})/i); // Description before amount
     if (rowAmount && rowDate) {
       isTable = true;
-      const rowType = line.toLowerCase().includes('refund') || line.toLowerCase().includes('credit') || line.match(/-\$\d+\.\d{2}/) ? 'income' : 'expense';
-      const rowCategory = rowType === 'income' ? 'Income' : category; // Use same category logic
+      const rowType = line.toLowerCase().includes('refund') || 
+                      line.toLowerCase().includes('credit') || 
+                      line.toLowerCase().includes('payment received') || 
+                      line.toLowerCase().includes('deposit') || 
+                      line.match(/-\$\d+\.\d{2}/) ? 'income' : 'expense';
+      const rowCategory = rowType === 'income' ? 'Income' : defaultCategory;
       const rowDate = rowDate[0].includes('/') || rowDate[0].includes('-') ?
         new Date(rowDate[0].replace(/-/g, '/')) :
         new Date(rowDate[0]);
@@ -141,22 +177,47 @@ function parseReceiptText(text) {
         amount: Math.abs(parseFloat(rowAmount[1])),
         category: rowCategory,
         date: isNaN(rowDate) ? new Date() : rowDate,
-        description: description || 'Table Entry',
-        userId: null, // Set later
+        description: rowDescription ? rowDescription[0].trim() : defaultDescription,
+        userId,
       });
     }
   }
 
-  // Return single transaction if not a table, or first valid transaction from table
-  if (isTable && transactions.length > 0) {
-    return transactions[0]; // Return first transaction for simplicity; extend to handle multiple if needed
+  // Handle single transaction (non-tabular receipt)
+  if (!isTable) {
+    let type = 'expense';
+    let category = defaultCategory;
+    if (normalizedText.includes('refund') ||
+        normalizedText.includes('credit') ||
+        normalizedText.includes('payment received') ||
+        normalizedText.includes('deposit') ||
+        normalizedText.match(/-\$\d+\.\d{2}/)) {
+      type = 'income';
+      category = 'Income';
+    }
+    const amountMatch = text.match(/(?:Total|Subtotal|Amount|Paid|Refund|Credit)[:\s]*[+-]?\s*\$?\s*(\d+\.\d{2})(?:\s*USD)?/i) ||
+                        text.match(/[+-]?\s*\$?\s*(\d+\.\d{2})/i);
+    const amount = amountMatch ? Math.abs(parseFloat(amountMatch[1])) : 0;
+    const dateMatch = text.match(/\d{2}[\/-]\d{2}[\/-]\d{4}/) ||
+                      text.match(/\d{2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}/i);
+    let date = new Date();
+    if (dateMatch) {
+      date = dateMatch[0].includes('/') || dateMatch[0].includes('-') ?
+        new Date(dateMatch[0].replace(/-/g, '/')) :
+        new Date(dateMatch[0]);
+      if (isNaN(date)) date = new Date();
+    }
+    if (amount > 0) {
+      transactions.push({
+        type,
+        amount,
+        category,
+        date,
+        description: defaultDescription,
+        userId,
+      });
+    }
   }
 
-  return {
-    type,
-    amount,
-    category,
-    date,
-    description,
-  };
+  return transactions;
 }

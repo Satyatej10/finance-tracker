@@ -1,14 +1,14 @@
 import axios from 'axios';
-
-const API_URL = 'http://localhost:5000/api/transactions';
+const API_URL = 'http://localhost:5000/api/upload';
 
 export const uploadReceipt = async (file, token) => {
   const formData = new FormData();
   formData.append('file', file);
+  console.log('uploadReceipt: Sending request with token:', token);
   return axios.post(`${API_URL}/upload`, formData, {
     headers: {
-      Authorization: `Bearer ${token}`,
       'Content-Type': 'multipart/form-data',
+      Authorization: `Bearer ${token}`,
     },
   });
 };
@@ -16,10 +16,11 @@ export const uploadReceipt = async (file, token) => {
 export const uploadPdfHistory = async (file, token) => {
   const formData = new FormData();
   formData.append('file', file);
+  console.log('uploadPdfHistory: Sending request with token:', token);
   return axios.post(`${API_URL}/upload-pdf-history`, formData, {
     headers: {
-      Authorization: `Bearer ${token}`,
       'Content-Type': 'multipart/form-data',
+      Authorization: `Bearer ${token}`,
     },
   });
 };
