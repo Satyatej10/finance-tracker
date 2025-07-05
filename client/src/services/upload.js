@@ -1,5 +1,5 @@
 import axios from 'axios';
-const API_URL = 'https://finance-tracker-one-sable.vercel.app/api/upload';
+const API_URL = 'https://finance-tracker-one-sable.vercel.app/api/transactions';
 
 export const uploadReceipt = async (file, token) => {
   const formData = new FormData();
