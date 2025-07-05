@@ -45,7 +45,7 @@ function Transactions() {
 
   return (
     <div className="mt-6">
-      <h1 className="text-3xl font-bold text-gray-800 mb-6">Transactions</h1>
+      <h1 className="text-3xl font-bold text-gray-800 mb-6">Transaction History</h1>
       {error && (
         <div className="bg-red-100 text-red-700 p-4 rounded mb-4 flex items-center">
           <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
@@ -67,22 +67,22 @@ function Transactions() {
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-gray-100">
-                <th className="border p-3 text-left">Type</th>
-                <th className="border p-3 text-left">Amount</th>
-                <th className="border p-3 text-left">Category</th>
                 <th className="border p-3 text-left">Date</th>
+                <th className="border p-3 text-left">Amount</th>
                 <th className="border p-3 text-left">Description</th>
+                <th className="border p-3 text-left">Category</th>
+                <th className="border p-3 text-left">Type</th>
               </tr>
             </thead>
             <tbody>
               {transactions.length > 0 ? (
                 transactions.map(t => (
                   <tr key={t._id} className="hover:bg-gray-50">
-                    <td className="border p-3 capitalize">{t.type}</td>
+                    <td className="border p-3">{new Date(t.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' })}</td>
                     <td className="border p-3">${t.amount.toFixed(2)}</td>
-                    <td className="border p-3">{t.category}</td>
-                    <td className="border p-3">{new Date(t.date).toLocaleDateString()}</td>
                     <td className="border p-3">{t.description}</td>
+                    <td className="border p-3">{t.category}</td>
+                    <td className="border p-3 capitalize">{t.type}</td>
                   </tr>
                 ))
               ) : (
