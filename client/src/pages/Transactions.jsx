@@ -1,123 +1,116 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getTransactions } from '../services/transactions';
 
 function Transactions() {
   const [transactions, setTransactions] = useState([]);
-  const [page, setPage] = useState(1);
-  const [limit] = useState(10);
-  const [total, setTotal] = useState(0);
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  const fetchTransactions = async () => {
-    setLoading(true);
-    setError('');
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setError('You must be logged in.');
-      setLoading(false);
-      return;
-    }
-    try {
-      const params = { page, limit };
-      if (startDate) params.startDate = startDate;
-      if (endDate) params.endDate = endDate;
-      const res = await getTransactions(params, token);
-      setTransactions(res.data.transactions);
-      setTotal(res.data.total);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to fetch transactions');
-    }
-    setLoading(false);
-  };
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const navigate = useNavigate();
 
   useEffect(() => {
+    const fetchTransactions = async () => {
+      setLoading(true);
+      setError('');
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.log('Transactions: No token found, redirecting to login');
+        setError('Please log in to view transactions.');
+        setLoading(false);
+        navigate('/login');
+        return;
+      }
+      try {
+        console.log('Transactions: Fetching transactions for page:', page);
+        const res = await getTransactions({ page, limit: 10 }, token);
+        setTransactions(res.data.transactions);
+        setTotalPages(Math.ceil(res.data.total / res.data.limit));
+      } catch (err) {
+        console.error('Transactions: Error fetching transactions:', err);
+        const message = err.response?.data?.message || 'Failed to load transactions. Please try again.';
+        setError(message);
+        if (err.response?.status === 401) {
+          console.log('Transactions: 401 Unauthorized, clearing localStorage and redirecting');
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          navigate('/login');
+        }
+      }
+      setLoading(false);
+    };
     fetchTransactions();
-  }, [page]);
-
-  const handleFilter = (e) => {
-    e.preventDefault();
-    setPage(1);
-    fetchTransactions();
-  };
+  }, [page, navigate]);
 
   return (
     <div className="mt-6">
       <h1 className="text-3xl font-bold text-gray-800 mb-6">Transactions</h1>
-      <form className="flex gap-4 mb-6 flex-wrap" onSubmit={handleFilter}>
-        <input
-          type="date"
-          value={startDate}
-          onChange={e => setStartDate(e.target.value)}
-          className="border border-gray-300 p-3 rounded focus:ring-2 focus:ring-blue-500"
-        />
-        <input
-          type="date"
-          value={endDate}
-          onChange={e => setEndDate(e.target.value)}
-          className="border border-gray-300 p-3 rounded focus:ring-2 focus:ring-blue-500"
-        />
-        <button
-          type="submit"
-          className="bg-blue-600 text-white px-4 py-3 rounded hover:bg-blue-700 transition duration-200"
-        >
-          Filter
-        </button>
-      </form>
-      {error && <div className="bg-red-100 text-red-700 p-3 rounded mb-4">{error}</div>}
+      {error && (
+        <div className="bg-red-100 text-red-700 p-4 rounded mb-4 flex items-center">
+          <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+          </svg>
+          {error}
+        </div>
+      )}
       {loading ? (
-        <div className="text-center text-gray-600">Loading...</div>
+        <div className="text-center text-gray-600 flex items-center justify-center">
+          <svg className="animate-spin h-5 w-5 mr-2 text-blue-600" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8h8a8 8 0 01-8 8v-8H4z" />
+          </svg>
+          Loading...
+        </div>
       ) : (
-        <div>
-          {transactions.length > 0 ? (
-            <>
-              <div className="overflow-x-auto">
-                <table className="w-full border rounded-lg overflow-hidden">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="p-3 text-left">Date</th>
-                      <th className="p-3 text-left">Type</th>
-                      <th className="p-3 text-left">Category</th>
-                      <th className="p-3 text-left">Amount</th>
-                      <th className="p-3 text-left">Description</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {transactions.map(tx => (
-                      <tr key={tx._id} className="border-t hover:bg-gray-50">
-                        <td className="p-3">{new Date(tx.date).toLocaleDateString()}</td>
-                        <td className="p-3">{tx.type}</td>
-                        <td className="p-3">{tx.category}</td>
-                        <td className="p-3">${tx.amount.toFixed(2)}</td>
-                        <td className="p-3">{tx.description || '-'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="flex justify-between items-center mt-4">
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="bg-gray-300 px-4 py-2 rounded hover:bg-gray-400 transition duration-200 disabled:opacity-50"
-                >
-                  Prev
-                </button>
-                <span className="text-gray-600">Page {page} of {Math.ceil(total / limit) || 1}</span>
-                <button
-                  onClick={() => setPage(p => p + 1)}
-                  disabled={page * limit >= total}
-                  className="bg-gray-300 px-4 py-2 rounded hover:bg-gray-400 transition duration-200 disabled:opacity-50"
-                >
-                  Next
-                </button>
-              </div>
-            </>
-          ) : (
-            <div className="text-gray-500 text-center">No transactions found</div>
-          )}
+        <div className="bg-white p-6 rounded-lg shadow-lg">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="border p-3 text-left">Type</th>
+                <th className="border p-3 text-left">Amount</th>
+                <th className="border p-3 text-left">Category</th>
+                <th className="border p-3 text-left">Date</th>
+                <th className="border p-3 text-left">Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.length > 0 ? (
+                transactions.map(t => (
+                  <tr key={t._id} className="hover:bg-gray-50">
+                    <td className="border p-3 capitalize">{t.type}</td>
+                    <td className="border p-3">${t.amount.toFixed(2)}</td>
+                    <td className="border p-3">{t.category}</td>
+                    <td className="border p-3">{new Date(t.date).toLocaleDateString()}</td>
+                    <td className="border p-3">{t.description}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="5" className="border p-3 text-center text-gray-500">
+                    No transactions found
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          <div className="mt-4 flex justify-between">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="bg-blue-600 text-white px-4 py-2 rounded disabled:bg-gray-300"
+            >
+              Previous
+            </button>
+            <span>Page {page} of {totalPages}</span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="bg-blue-600 text-white px-4 py-2 rounded disabled:bg-gray-300"
+            >
+              Next
+            </button>
+          </div>
         </div>
       )}
     </div>
