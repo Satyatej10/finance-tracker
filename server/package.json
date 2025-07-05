@@ -23,6 +23,6 @@
     "multer": "^2.0.1",
     "pdf-parse": "^1.1.1",
     "tesseract.js": "^6.0.1",
-    "vercel": "^44.2.12"
+    "vercel": "39.1.0"
   }
 }
