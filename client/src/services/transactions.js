@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5000/api/transactions';
+const API_URL = 'https://finance-tracker-one-sable.vercel.app/api/transactions';
 
 export const addTransaction = async (transaction, token) => {
   console.log('addTransaction: Sending request with token:', token);

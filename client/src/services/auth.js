@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5000/api/auth';
+const API_URL = 'https://finance-tracker-one-sable.vercel.app/api/auth';
 
 export const register = async (name, email, password) => {
   return axios.post(`${API_URL}/register`, { name, email, password });
