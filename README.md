@@ -48,8 +48,8 @@ A full-stack web application to manage your income, expenses, receipts, and fina
   - Select your PDF file (must follow supported format)
   - Parsed transactions will appear in your transaction list
 
-> 📂 [Sample Receipt Image](./public/samples/sample-receipt.png)  
-> 📄 [Sample Transaction PDF](./public/samples/sample-transactions.pdf)
+> 📂 [Sample Receipt Image](./client/public/samples/sample-receipt.png)  
+> 📄 [Sample Transaction PDF](./client/public/samples/sample-transactions.pdf)
 
 
 
