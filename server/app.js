@@ -20,7 +20,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/transactions', uploadRoutes);
 
-// Error handler
+// Error handler 
 app.use(errorHandler);
 
 // MongoDB connection
