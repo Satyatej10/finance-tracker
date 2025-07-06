@@ -1,4 +1,4 @@
-# Personal Finance Assistant (MERN)
+# money Finance (MERN)
 
 A full-stack web application to manage your income, expenses, receipts, and financial analytics.
 
@@ -60,6 +60,3 @@ A full-stack web application to manage your income, expenses, receipts, and fina
   tailwind.config.js
   index.html
 ```
-
-## License
-MIT
